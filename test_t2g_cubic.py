@@ -1,6 +1,6 @@
 import numpy as np
 import sparse_ir as ir
-import negf_ir
+import mgf_ir
 
 
 
@@ -177,10 +177,10 @@ V = coulomb_interaction_d_Oh(racahA, racahB, racahC)
 
 
 
-H = negf_ir.Hamiltonian(Hloc, V, Hhop)
+H = mgf_ir.Hamiltonian(Hloc, V, Hhop)
 
 
 
 irb = ir.FiniteTempBasis('F', beta, wM)
-dy_solver = negf_ir.DysonSolver(H, irb, 4, negf_ir.Lattice(*(nk_lin,)*3))
+dy_solver = mgf_ir.DysonSolver(H, irb, 4, negf_ir.Lattice(*(nk_lin,)*3))
 dy_solver.solve()
