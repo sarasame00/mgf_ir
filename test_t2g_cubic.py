@@ -1,22 +1,37 @@
 import numpy as np
 import sparse_ir as ir
-import mgf_ir
+import negf_ir
 
 
 
 # Parameters
-xiSO = 0.02
-gJT = 0.5
-theta = 0
-pdd = 0.13
-ddd = 0.05
-pol = 'L'
-racahA = 6.4
-racahB = 0.12
-racahC = 0.552
-beta = 45
-wM = 4
-nk_lin = 8
+
+fl = open("parameters_test_t2g_cubic")
+lines = fl.readlines()
+fl.close()
+
+for line in lines:
+    if line[:2] == "--":
+        splitted = line[2:].split(' ')
+        while True:
+            try:
+                splitted.remove('')
+            except:
+                break
+        locals()[splitted[0]] = float(splitted[2])
+        print(splitted[0] + "=" + splitted[2])
+    
+    if line[:2] == "++":
+        splitted = line[2:].split(' ')
+        while True:
+            try:
+                splitted.remove('')
+            except:
+                break
+        locals()[splitted[0]] = int(splitted[2])
+        print(splitted[0] + "=" + splitted[2])
+
+print("Parameters set")
 
 
 
@@ -96,9 +111,9 @@ def moment_tensor(C,D):
 
 
 P = moment_tensor(0.13, 0.05)
-vec_pot = np.array([1,0,0]) # {'L':np.array([1,1j,0]), 'R':np.array([1,-1j,0])}[pol]
-Hhop = np.kron(np.einsum('l,lkap,lkpb->kab', vec_pot, P, P.conjugate()), np.eye(2))
-
+vec_pot = np.array([1, eoy*np.exp(1j*np.pi/180*phiy, eoz*np.exp(1j*np.pi/180*phiz))]) / np.sqrt(1+eoy**2+eoz**2)
+virtual_hop = np.einsum('l,lkdp->kdp', vec_pot, P)
+Hhop = hoppampl * np.kron(np.einsum('kap,kbp->kab', virtual_hop, virtual_hop.conjugate()), np.eye(2))
 
 
 def coulomb_interaction_d_Oh(A, B, C):
@@ -177,10 +192,10 @@ V = coulomb_interaction_d_Oh(racahA, racahB, racahC)
 
 
 
-H = mgf_ir.Hamiltonian(Hloc, V, Hhop)
+H = negf_ir.Hamiltonian(Hloc, V, Hhop)
 
 
 
 irb = ir.FiniteTempBasis('F', beta, wM)
-dy_solver = mgf_ir.DysonSolver(H, irb, 4, negf_ir.Lattice(*(nk_lin,)*3))
+dy_solver = negf_ir.DysonSolver(H, irb, 4, negf_ir.Lattice(*(nk_lin,)*3))
 dy_solver.solve()
