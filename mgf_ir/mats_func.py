@@ -179,14 +179,14 @@ def non_int_g(H, mu, ir_basis, lattice=None):
     iw = 1j*siw.wn * np.pi/ir_basis.beta
     
     if isinstance(lattice, Lattice):
-        hk = H.w[None,:] + np.sum(2*H.kin_hoppings[None,:,:]*np.cos(lattice.k_vecs)[:,:,None], axis=1) - mu
+        hk = H.Hk(lattice) - mu
         giw = (iw[:,None,None] - hk[None,:,:])**-1
-        return MatsubaraGreenLatt(siw.fit(giw, axis=0), ir_basis, lattice)
+        return MatsubaraGreenLatt(siw.fit(giw, axis=0).real, ir_basis, lattice)
     
     else:
         h = H.w - mu
         giw = (iw[:,None] - h[None,:])**-1
-        return MatsubaraGreenLatt(siw.fit(giw, axis=0), ir_basis)
+        return MatsubaraGreen(siw.fit(giw, axis=0), ir_basis)
 
 
 def zeroG(H, ir_basis, lattice=None):
@@ -194,6 +194,19 @@ def zeroG(H, ir_basis, lattice=None):
         return MatsubaraGreenLatt(np.zeros((ir_basis.size, lattice.nk, H.dim)), ir_basis, lattice)
     else:
         return MatsubaraGreen(np.zeros((ir_basis.size, H.dim)), ir_basis)
+
+
+def mats_copy(F):
+    if isinstance(F, MatsubaraGreen):
+        return MatsubaraGreen(F.Fl, F.basis)
+    elif isinstance(F, MatsubaraGreenLatt):
+        return MatsubaraGreenLatt(F.Fl, F.basis, F.lattice)
+    elif isinstance(F, MatsubaraBubble):
+        return MatsubaraBubble(F.Fl, F.basis)
+    elif isinstance(F, MatsubaraBubbleLatt):
+        return MatsubaraBubbleLatt(F.Fl, F.basis, F.lattice)
+    else:
+        raise TypeError("This cannot copy an object which is not a Matsubara type")
 
 
 def zeroBubble(H, ir_basis, lattice=None):
@@ -225,7 +238,7 @@ def pol_bubble_from_green(G):
 
 # Self-energy approximations
 
-def self_energy_hf(H, Gloc):
+def __self_energy_hf(H, Gloc):
     if Gloc.particle == 'F':
         ps = -1
     elif Gloc.particle == 'B':

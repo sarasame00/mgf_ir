@@ -25,9 +25,9 @@ class Hamiltonian:
         self.__dim = Hloc.shape[0]
         
         self.__w, self.__P = np.linalg.eigh(Hloc)
-        self.__hopp = np.einsum('ik,...kl,li->...i', self.Ph, Hkin, self.P).real if isinstance(Hkin, np.ndarray) else None
-        self.__Umf = -np.einsum('bk,am,na,ld,mkln->ab', self.Ph, self.Ph, self.P, self.P, V - np.swapaxes(V, 2, 3)).real
-        self.__U = self.__Umf = -np.einsum('bk,am,na,ld,mkln->ab', self.Ph, self.Ph, self.P, self.P, V).real
+        self.__hopp = -np.einsum('ik,...kl,li->...i', self.Ph, Hkin, self.P).real if isinstance(Hkin, np.ndarray) else None
+        self.__Umf = -np.einsum('bk,am,na,lb,mkln->ab', self.Ph, self.Ph, self.P, self.P, V - np.swapaxes(V, 2, 3)).real
+        self.__U = np.einsum('bk,am,na,ld,mkln->ab', self.Ph, self.Ph, self.P, self.P, V).real
     
     @property
     def dim(self):
@@ -58,3 +58,8 @@ class Hamiltonian:
     @property
     def U(self):
         return self.__U
+    
+    def Hk(self, lattice):
+        if self.__hopp is None:
+            raise AttributeError("This Hamiltonian object has not a kietic term")
+        return self.w[None,:] + 2*np.sum(self.kin_hoppings[None,:,:] * np.cos(lattice.k_vecs)[:,:,None], axis=1)
