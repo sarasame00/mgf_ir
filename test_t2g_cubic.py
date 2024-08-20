@@ -122,8 +122,8 @@ def coulomb_interaction_d_Oh(A, B, C):
     F_0 = A + 49*F_4
     
     F0 = F_0
-    F2 = F_2/49
-    F4 = F_4/441
+    F2 = F_2*49
+    F4 = F_4*441
     
     #Orbital basis
     sq2 = np.sqrt(2)
