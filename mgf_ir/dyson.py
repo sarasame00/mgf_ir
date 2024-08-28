@@ -252,6 +252,13 @@ class DysonSolver:
             return np.einsum('ij,...j,jk->...ik', self.H.P, A, self.H.Ph)
         
         return rho
+
+    def particle_number(self):
+        N = self.Gloc.Ftau[-1]
+        return np.einsum('ij,j,jk->ik', self.H.P, N, self.H.Ph)
+
+    def to_eigenbasis(self, A):
+        return np.einsum('ij,...jk,ki->...i', self.H.P, A, self.H.Ph)
     
     # def solve(self, approx = "HF", th=1e-6, delta_mu = 0.1, diis_mem=5):
     #     print("Starting self-consistent solution of Dyson equation\n")
