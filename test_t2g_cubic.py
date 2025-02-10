@@ -1,6 +1,6 @@
 import numpy as np
 import sparse_ir as ir
-import negf_ir
+from mgf_ir import negf_ir
 
 
 

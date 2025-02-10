@@ -8,14 +8,20 @@ from .mats_func import non_int_g, zeroG, mats_copy, zeroBubble, pol_bubble_from_
 
 class DysonSolver:
     def __init__(self, H, ir_basis, N, lattice=None):
+        """
+        Initializes the DysonSolver class, which solves the Dyson equation for a given Hamiltonian H.
+        The solver works in the Matsubara formalism and supports lattice-based systems (optional).
+        """
+        # Ensure that H is an instance of the Hamiltonian class
         if not isinstance(H, Hamiltonian):
             raise TypeError("H must be a Hamiltonian type")
+        
+        # Store the Hamiltonian, particle density, and the basis
         self.__H = H
-        
         self.__N = N
-        
         self.__basis = ir_basis
-        
+         
+        # Check if a lattice is provided; set the lattice flag accordingly
         if isinstance(lattice, Lattice):
             self.__lattice = lattice
             self.__in_lattice = True
@@ -23,82 +29,92 @@ class DysonSolver:
             self.__lattice = None
             self.__in_lattice = False
         
-        
+        # Initialize the chemical potential (mu) to zero
         self.__mu = 0
         
-        self.__G0 = self.__non_int_mu_adj()
+        # Initialize the non-interacting Green's function (G0)
+        self.__G0 = self.__non_int_mu_adj() # Adjust the chemical potential for non-interacting system
+
+        # Initialize Green's function on the lattice (if in lattice) or copy the non-interacting Green's function
         self.__Gk = mats_copy(self.__G0) if self.__in_lattice else None
+
+        # Initialize the local Green's function (Gloc), depending on whether lattice is used
         self.__Gloc = MatsubaraGreen(np.sum(self.__Gk.Fl, axis=1)/self.nk, ir_basis) if self.__in_lattice else mats_copy(self.__G0)
+        
+        # Initialize the self-energy term (SE) to be zero (non-interacting)
         self.__SE = zeroG(H, ir_basis)
+
+         # Initialize the self-energy for the Hartree-Fock (HF) approximation
         self.__sehf = 0
         
+        # Initialize time and frequency samplers for the Matsubara Green's function
         self.__sampl_time = ir.TauSampling(ir_basis)
         self.__sampl_freq = ir.MatsubaraSampling(ir_basis)
         
-        
+        # Flag to track if the solver has finished solving the Dyson equation
         self.__solved = False
     
     @property
     def H(self):
-        return self.__H
+        return self.__H # Return the Hamiltonian
     
     @property
     def particle_density(self):
-        return self.__N
+        return self.__N # Return the particle density
     
     @property
     def dim(self):
-        return self.H.dim
+        return self.H.dim # Return the dimension of the Hamiltonian (number of quantum states)
     
     @property
     def basis(self):
-        return self.__basis
+        return self.__basis  # Return the IR basis
     
     @property
     def beta(self):
-        return self.basis.beta
+        return self.basis.beta # Return the beta value of the basis
     
     @property
     def particle(self):
-        return self.basis.statistics
+        return self.basis.statistics # Return the statistics (Fermionic or Bosonic) of the basis
     
     @property
     def lattice(self):
         if self.__in_lattice:
-            return self.__lattice
+            return self.__lattice # Return the lattice if it's being used
         else:
             raise AttributeError("This Dyson solver has no lattice")
     
     @property
     def nk(self):
-        return self.lattice.nk
+        return self.lattice.nk  # Return the number of lattice points (nk)
     
     @property
     def mu(self):
-        return self.__mu
+        return self.__mu # Return the chemical potential
     
     @property
     def g(self):
-        return self.__G0
+        return self.__G0 # Return the non-interacting Green's function
     
     @property
     def Gloc(self):
-        return self.__Gloc
+        return self.__Gloc # Return the local Green's function
     
     @property
     def Gk(self):
         if self.__in_lattice:
-            return self.__Gk
+            return self.__Gk # Return the Green's function on the lattice if it's being used
         else:
-            raise AttributeError("This Dyson solver hs no lattice")
+            raise AttributeError("This Dyson solver has no lattice")
     
     @property
     def segy(self):
-        return self.__SE
+        return self.__SE # Return the self-energy (SE)
     
     @property
     def segy_hf(self):
-        return self.__sehf
+        return self.__sehf # Return the self-energy in the Hartree-Fock approximation
     
     
     def __non_int_mu_adj(self, th=1e-8, delta_mu=0.5):
@@ -127,38 +143,68 @@ class DysonSolver:
         return g0
     
     def __mu_adj(self, th=1e-6, delta_mu=0.5):
-        self.__mu = 0
-        last_sign = 2
-        loops = 0
-        print("Adjusting chemichal potential")
+        """
+        Adjust the chemical potential for the non-interacting system until the desired particle density is reached.
+        This is done by iterating and adjusting the chemical potential (mu) until the density converges.
+        """
+        self.__mu = 0  # Initialize the chemical potential to 0
+        last_sign = 2  # Initialize the sign of the particle density difference to 2 (no previous value)
+        loops = 0  # Initialize the loop counter
+        print("Adjusting chemical potential")
+
         while True:
+            # Compute the non-interacting Green's function (G0) for the current chemical potential
+            # Depending on whether a lattice is used, we compute the Green's function accordingly
             self.__G0 = non_int_g(self.H, self.mu, self.basis, self.lattice) if self.__in_lattice else non_int_g(self.H, self.mu, self.basis)
+            
+            # Update the Green's function using the current self-energy terms (self.__SE)
             self.__update_green()
+
+            # Compute the particle density N from the Green's function
             N = self.__eval_particle_dens()
+
+            # Calculate the difference (DN) between the desired particle density and the computed density
             DN = self.__N - N
             
+            # Check if the particle density difference is small enough (convergence)
             if abs(DN) < th:
-                break
+                break # If converged, exit the loop
+
+            # Determine the sign of the density difference (whether the density needs to increase or decrease)
             sign_N = 1 if DN > 0 else -1
+            
+            # If the sign of DN changes, reduce the step size (delta_mu) to avoid overshooting
             if not (last_sign == sign_N or last_sign == 2):
                 delta_mu /= 2
-            loops += 1
+
+            loops += 1 # Increment the loop counter
+
             print("Iteration %i computed particle density of %.8f and mu=%.8f" % (loops, N, self.__mu))
+
+            # Adjust the chemical potential (mu) based on the sign of DN (either increasing or decreasing)
             self.__mu += sign_N * delta_mu
-            last_sign = sign_N
+            last_sign = sign_N # Update the sign of DN for the next iteration
+
         print("Green's function optimized with mu=%.8f" % self.mu)
     
     def __eval_particle_dens(self):
-        return -np.sum(self.Gloc(self.beta, 'time'))
+        """
+        Evaluate the particle density using the Green's function (G).
+        """
+        return -np.sum(self.Gloc(self.beta, 'time')) # Sum over the Green's function in imaginary time
     
     def __update_self_energy(self, approx):
-        ps = {'F':-1, 'B':1}[self.particle]
-        self.__sehf = ps * self.H.Umf @ self.Gloc.Ftau[-1]
+        """
+        Update the self-energy based on the chosen approximation (e.g., Hartree-Fock, GW).
+        """
+        ps = {'F':-1, 'B':1}[self.particle] # Particle statistics (negative for fermions, positive for bosons)
+        self.__sehf = ps * self.H.Umf @ self.Gloc.Ftau[-1] # Update the self-energy in the Hartree-Fock approximation
         
         if approx == "HF":
-            pass
+            pass # Hartree-Fock approximation is already handled
         
         elif approx == "GW":
+            # GW approximation (for self-energy) using polarization bubbles, not implemented
             pik = pol_bubble_from_green(self.Gk)
             raise NotImplementedError
         
@@ -166,98 +212,156 @@ class DysonSolver:
             raise NotImplementedError
     
     def __update_green(self):
+        """
+        Update the Green's function using the Dyson equation. This involves updating both the local Green's function and Green's function on the lattice.
+        """
         # ps = {'F':-1, 'B':1}[self.particle]
         # sigma_hf = ps * np.einsum('ab,lb,l->a', self.H.Umf, self.Gloc[:], self.basis.u(self.beta))
         
         if self.__in_lattice:
+            # Update Green's function on the lattice using the self-energy
             Gkiw = (self.g.Fiw**-1 - self.segy_hf[None,None,:] - self.segy.Fiw[:,None,:])**-1
-            self.__Gk[:] = self.__sampl_freq.fit(Gkiw, axis=0).real
-            self.__Gloc[:] = np.sum(self.Gk[:], axis=1) / self.nk
+            self.__Gk[:] = self.__sampl_freq.fit(Gkiw, axis=0).real # Update Green's function in momentum space
+            self.__Gloc[:] = np.sum(self.Gk[:], axis=1) / self.nk # Update local Green's function (average over momentum space)
         
         else:
-            Giw = (self.g.Fiw**-1 - self.segy.Fiw)**-1
-            self.__Gloc[:] = self.__sampl_freq.fit(Giw, axis=0).real
+            Giw = (self.g.Fiw**-1 - self.segy.Fiw)**-1 # Update Green's function in the absence of lattice
+            self.__Gloc[:] = self.__sampl_freq.fit(Giw, axis=0).real # Update local Green's function
     
     def __checkN(self, N):
-        return -np.sum(self.Gloc.Ftau[-1])
+        """
+        Check the particle density (N) from the local Green's function (Gloc).
+        """
+        return -np.sum(self.Gloc.Ftau[-1]) # Return the particle density from the local Green's function (in time space)
         # return -np.sum(self.Gloc(self.beta, 'time'), axis=-1)
     
     
     def solve(self, approx = "HF", th=1e-6, diis_mem=5):
+        """
+        Solves the Dyson equation self-consistently for the Green's function. This method iterates to find the self-consistent solution.
+        The self-energy is updated at each iteration, and the chemical potential is adjusted to match the desired particle density.
+        """
         print("Starting self-consistent solution of Dyson equation\n")
-        loops = 0
-        diis_err = np.zeros((diis_mem, self.basis.size+1, self.dim))
-        diis_val = np.zeros((diis_mem, self.basis.size+1, self.dim))
+
+        loops = 0 # Initialize loop counter
+
+        diis_err = np.zeros((diis_mem, self.basis.size+1, self.dim)) # Initialize memory for DIIS (Direct Inversion in Iterative Subspace) errors
+        diis_val = np.zeros((diis_mem, self.basis.size+1, self.dim)) # Initialize memory for DIIS vector values
+
         while True:
+            # Store the last value of the local Green's function (Gloc) for convergence check
             last_Glocl = np.copy(self.Gloc.Fl)
+
+            # Update the self-energy based on the chosen approximation (e.g., Hartree-Fock)
             self.__update_self_energy(approx)
+
+            # Prepare the DIIS vectors for error correction
             diis_vec = np.zeros((self.basis.size+1,self.dim))
-            diis_vec[0] = np.copy(self.segy_hf)
-            diis_vec[1:] = np.copy(self.segy.Fl)
+            diis_vec[0] = np.copy(self.segy_hf)  # First vector corresponds to the Hartree-Fock self-energy
+            diis_vec[1:] = np.copy(self.segy.Fl) # Other vectors correspond to the self-energy terms for the system
+            
+            # Shift previous DIIS values and errors to make space for the new ones
             diis_val[:-1] = np.copy(diis_val[1:])
             diis_val[-1] = np.copy(diis_vec)
             diis_err[:-1] = np.copy(diis_err[1:])
-            diis_err[-1] = np.copy(diis_val[-1] - diis_val[-2])
+            diis_err[-1] = np.copy(diis_val[-1] - diis_val[-2]) # Compute the error for the current iteration
+
+            # If the memory size for DIIS is reached, solve for new coefficients using the previous DIIS errors
             if loops >= diis_mem:
-                B = np.zeros((diis_mem,)*2)
+                B = np.zeros((diis_mem,)*2) # Initialize the matrix for DIIS linear system
                 for i in range(diis_mem):
                     for j in range(i, diis_mem):
+                        # Compute the inner products of the errors for each pair of iterations
                         B[i,j] = np.sum(diis_err[i] * diis_err[j])
                         if i != j:
-                            B[j,i] = np.copy(B[i,j])
+                            B[j,i] = np.copy(B[i,j]) # Symmetric matrix
+                # Solve for the DIIS coefficients that minimize the error
                 c_prime = np.linalg.inv(B) @ np.ones((diis_mem,))
-                c = c_prime / np.sum(c_prime)
-                diis_vec = np.sum(c[:,None,None]*diis_val, axis=0)
-                diis_val[-1] = np.copy(diis_vec)
-                diis_err[-1] = np.copy(diis_val[-1] - diis_val[-2])
-                self.__segy = np.copy(diis_vec[0])
-                self.__SE[:] = np.copy(diis_vec[1:])
-            
+                c = c_prime / np.sum(c_prime) # Normalize the coefficients
+                diis_vec = np.sum(c[:,None,None]*diis_val, axis=0) # Compute the new DIIS vector by weighting previous values
+                diis_val[-1] = np.copy(diis_vec) 
+                diis_err[-1] = np.copy(diis_val[-1] - diis_val[-2])  # Update the error
+                self.__segy = np.copy(diis_vec[0])  # Update the self-energy (HF part)
+                self.__SE[:] = np.copy(diis_vec[1:])  # Update the self-energy (interacting part)
+
+            # Adjust the chemical potential (mu) to match the desired particle density
             self.__mu_adj()
             
+            # Check the convergence of the Green's function by computing the difference between the current and last values
             conv = np.sqrt(np.sum((self.Gloc.Fl - last_Glocl)**2))
-            loops += 1
+            
+            loops += 1 # Increment the iteration counter
+            # If the difference is small enough, stop the iterations
             if conv < th:
                 break
+
             print("Iteration %i completed with convergence %.8f" % (loops, conv))
             print('-------------------------------------------------------\n')
+
         print("Finished after %i iterations with convergence of %.8f" % (loops, conv))
-        self.__solved = True
+
+        self.__solved = True # Mark the solver as successfully solved
     
     def spectral_function_mf(self):
+        """
+        Calculates the spectral function using the mean-field approximation. 
+        The spectral function describes the density of states of the system.
+        """
         def rho(w, eta):
+            """
+            Computes the spectral density (A) at a given frequency w with a small damping factor eta.
+            """
+            # Ensure that eta (damping factor) is a constant number (either int or float)
             if not isinstance(eta, (int, float)):
                 raise ValueError("Dumping must be a constant number")
             
+            # If the frequency is a single value (not an array)
             if isinstance(w, (int, float)):
+                # Check if the frequency is within the allowed range
                 if w < -self.basis.wmax or w > self.basis.wmax:
                     raise ValueError("Not able to compute outside max frequency %.3feV" % self.basis.wmax)
+                 # If lattice is used, calculate the spectral function using the lattice Green's function (Hk) and self-energy
                 if self.__in_lattice:
                     A = eta/self.nk/np.pi * np.sum(((w - self.H.Hk(self.lattice) - self.segy_hf[None,:] + self.mu)**2 + eta**2)**-1, axis=0)
                 else:
                     A = eta/np.pi * ((w - self.H.w - self.segy_hf + self.mu)**2 + eta**2)**-1
             
+            # If the frequency is an array of values, handle it as an iterable
             else:
                 try:
                     w = np.array(w)
                 except:
                     raise TypeError("Frequencies must be an iterable of numbers")
+                
+                 # Check if any frequencies are out of range
                 if np.any(w < -self.basis.wmax) or np.any(w > self.basis.wmax):
                     raise ValueError("Not able to compute outside max frequency %.3feV" % self.basis.wmax)
+                
+                # If lattice is used, calculate the spectral function over multiple frequencies
                 if self.__in_lattice:
                     A = eta/self.nk/np.pi * np.sum(((w[:,None,None] - self.H.Hk(self.lattice)[None,:,:] - self.segy_hf[None,None,:] + self.mu)**2 + eta**2)**-1, axis=1)
                 else:
                     A = eta/np.pi * ((w[:,None] - self.H.w[None,:] - self.segy_hf[None,:] + self.mu)**2 + eta**2)**-1
             
+            # Return the spectral function (A) using the eigenbasis of the Hamiltonian
             return np.einsum('ij,...j,jk->...ik', self.H.P, A, self.H.Ph)
         
         return rho
 
     def particle_number(self):
-        N = self.Gloc.Ftau[-1]
+        """
+        Compute the particle number (density) from the local Green's function (G).
+        """
+        N = self.Gloc.Ftau[-1] # Get the last value of the local Green's function (in time space)
+        # Calculate the particle number using the eigenvectors of the Hamiltonian
         return np.einsum('ij,j,jk->ik', self.H.P, N, self.H.Ph)
 
     def to_eigenbasis(self, A):
+        """
+        Transform a matrix A to the eigenbasis of the Hamiltonian using the eigenvectors (P, Ph).
+        This is useful for converting between the physical basis and the diagonalized basis of the system.
+        """
+        # Perform the transformation to the eigenbasis using Einstein summation
         return np.einsum('ij,...jk,ki->...i', self.H.P, A, self.H.Ph)
     
     # def solve(self, approx = "HF", th=1e-6, delta_mu = 0.1, diis_mem=5):
@@ -362,7 +466,7 @@ class DysonSolver:
 
 
 
-def __screened_interaction(G, H):
-    if isinstance(G, MatsubaraGreen):
-        pi = pol_bubble_from_green(G)
-        what = zeroBubble(H, G.basis)
+# def __screened_interaction(G, H):
+#     if isinstance(G, MatsubaraGreen):
+#         pi = pol_bubble_from_green(G)
+#         what = zeroBubble(H, G.basis)
