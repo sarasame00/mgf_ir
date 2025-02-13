@@ -275,6 +275,9 @@ class DysonSolver:
                         B[i,j] = np.sum(diis_err[i] * diis_err[j])
                         if i != j:
                             B[j,i] = np.copy(B[i,j]) # Symmetric matrix
+                
+                #B += np.eye(B.shape[0]) * 1e-10  # Add a small regularization term to the diagonal to o prevent it from being singular
+
                 # Solve for the DIIS coefficients that minimize the error
                 c_prime = np.linalg.inv(B) @ np.ones((diis_mem,))
                 c = c_prime / np.sum(c_prime) # Normalize the coefficients

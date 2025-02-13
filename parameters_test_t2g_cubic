@@ -6,6 +6,8 @@
 
 # Hamiltonian parameters
 --FT     = 0.13 # Jahn-Teller t shell 1st order
+--gJT    = 0.25 # Jahn-Teller Coupling Constant ADDED
+--theta  = 0.6 # Jahn-Teller Distortion Angle ADDED
 --racahA = 6.40  # Racah parameter
 --racahB = 0.12  # Racah parameter
 --racahC = 0.552 # Racah parameter
