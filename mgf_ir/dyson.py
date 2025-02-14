@@ -275,11 +275,15 @@ class DysonSolver:
                         B[i,j] = np.sum(diis_err[i] * diis_err[j])
                         if i != j:
                             B[j,i] = np.copy(B[i,j]) # Symmetric matrix
-                
-                #B += np.eye(B.shape[0]) * 1e-10  # Add a small regularization term to the diagonal to o prevent it from being singular
+        
+                B /= np.mean(B)
+                try:
+                    Binv = np.linalg.inv(B)
+                except:
+                    Binv = np.linalg.inv(B + np.eye(diis_mem)*1e-8)
 
                 # Solve for the DIIS coefficients that minimize the error
-                c_prime = np.linalg.inv(B) @ np.ones((diis_mem,))
+                c_prime = Binv @ np.ones((diis_mem,))
                 c = c_prime / np.sum(c_prime) # Normalize the coefficients
                 diis_vec = np.sum(c[:,None,None]*diis_val, axis=0) # Compute the new DIIS vector by weighting previous values
                 diis_val[-1] = np.copy(diis_vec) 

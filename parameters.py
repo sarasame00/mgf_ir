@@ -8,8 +8,8 @@ nk_lin = 8    # Number of k samples per axis
 
 # Hamiltonian parameters
 FT     = 0.13 # Jahn-Teller t shell 1st order
-gJT    = 0.25 # Jahn-Teller Coupling Constant
-theta  = 0.6 # Jahn-Teller Distortion Angle
+gJT    = 0.2 # Jahn-Teller Coupling Constant
+theta  = 0 # Jahn-Teller Distortion Angle
 racahA = 6.40  # Racah parameter
 racahB = 0.12  # Racah parameter
 racahC = 0.552 # Racah parameter
