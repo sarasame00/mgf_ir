@@ -29,11 +29,10 @@ class DysonSolver:
             self.__lattice = None
             self.__in_lattice = False
         
-        # Initialize the chemical potential (mu) to zero
-        self.__mu = 0
-        
+        self.__adjust_mu(is_interacting=False) # Adjust the chemical potential for non-interacting system
+            
         # Initialize the non-interacting Green's function (G0)
-        self.__G0 = self.__non_int_mu_adj() # Adjust the chemical potential for non-interacting system
+        self.__G0 = non_int_g(self.H, self.mu, self.basis, self.lattice) if self.__in_lattice else non_int_g(self.H, self.mu, self.basis) 
 
         # Initialize Green's function on the lattice (if in lattice) or copy the non-interacting Green's function
         self.__Gk = mats_copy(self.__G0) if self.__in_lattice else None
@@ -116,59 +115,45 @@ class DysonSolver:
     def segy_hf(self):
         return self.__sehf # Return the self-energy in the Hartree-Fock approximation
     
-    
-    def __non_int_mu_adj(self, th=1e-8, delta_mu=0.5):
-        last_sign = 2
-        loops = 0
-        print("Adjusting non-interacting chemichal potential")
-        while True:
-            g0 = non_int_g(self.H, self.mu, self.basis, self.lattice) if self.__in_lattice else non_int_g(self.H, self.mu, self.basis)
-            if self.__in_lattice:
-                N = -np.sum(g0.Ftau[-1]) / self.nk
-            else:
-                N = -np.sum(g0.Ftau[-1])
-            DN = self.__N - N
-            
-            if abs(DN) < th:
-                break
-            sign_N = 1 if DN > 0 else -1
-            if not (last_sign == sign_N or last_sign == 2):
-                delta_mu /= 2
-            loops += 1
-            print("Iteration %i computed particle density of %.8f and mu=%.8f" % (loops, N, self.__mu))
-            self.__mu += sign_N * delta_mu
-            last_sign = sign_N
-        print("Non interactive Green's function initialized with mu=%.8f" % self.mu)
-        print('-------------------------------------------------------\n')
-        return g0
-    
-    def __mu_adj(self, th=1e-6, delta_mu=0.5):
+    def __adjust_mu(self, th=1e-8, delta_mu=0.5, is_interacting=True):
         """
-        Adjust the chemical potential for the non-interacting system until the desired particle density is reached.
-        This is done by iterating and adjusting the chemical potential (mu) until the density converges.
+        Adjusts the chemical potential for the system (either non-interacting or interacting) until the desired particle density is reached.
+        
+        This function adjusts the chemical potential (mu) to match the desired particle density by iterating and computing the Green's function.
+        It is used in both the non-interacting and interacting cases.
+        
+        Parameters:
+        th (float): The threshold for the difference in particle density, below which the iteration stops.
+        delta_mu (float): The initial step size used to adjust the chemical potential during each iteration.
+        is_interacting (bool): Flag to indicate if the system is interacting or non-interacting.
         """
-        self.__mu = 0  # Initialize the chemical potential to 0
+                
+        self.__mu = 0 # Initialize the chemical potential (mu) to zero
         last_sign = 2  # Initialize the sign of the particle density difference to 2 (no previous value)
-        loops = 0  # Initialize the loop counter
+        loops = 0  # Loop counter for the number of iterations
+
         print("Adjusting chemical potential")
 
         while True:
-            # Compute the non-interacting Green's function (G0) for the current chemical potential
-            # Depending on whether a lattice is used, we compute the Green's function accordingly
-            self.__G0 = non_int_g(self.H, self.mu, self.basis, self.lattice) if self.__in_lattice else non_int_g(self.H, self.mu, self.basis)
-            
-            # Update the Green's function using the current self-energy terms (self.__SE)
-            self.__update_green()
-
-            # Compute the particle density N from the Green's function
-            N = self.__eval_particle_dens()
+            if is_interacting:
+                self.__G0 = non_int_g(self.H, self.mu, self.basis, self.lattice) if self.__in_lattice else non_int_g(self.H, self.mu, self.basis)
+                # Update the Green's function using the current self-energy terms (self.__SE)
+                self.__update_green()
+                # Compute the particle density (N) from the Green's function
+                N = self.__eval_particle_dens()
+            else:
+                g0 = non_int_g(self.H, self.mu, self.basis, self.lattice) if self.__in_lattice else non_int_g(self.H, self.mu, self.basis)
+                if self.__in_lattice:
+                    N = -np.sum(g0.Ftau[-1]) / self.nk
+                else:
+                    N = -np.sum(g0.Ftau[-1])
 
             # Calculate the difference (DN) between the desired particle density and the computed density
             DN = self.__N - N
             
             # Check if the particle density difference is small enough (convergence)
             if abs(DN) < th:
-                break # If converged, exit the loop
+                break  # If converged, exit the loop
 
             # Determine the sign of the density difference (whether the density needs to increase or decrease)
             sign_N = 1 if DN > 0 else -1
@@ -177,15 +162,19 @@ class DysonSolver:
             if not (last_sign == sign_N or last_sign == 2):
                 delta_mu /= 2
 
-            loops += 1 # Increment the loop counter
+            loops += 1  # Increment the loop counter
 
-            print("Iteration %i computed particle density of %.8f and mu=%.8f" % (loops, N, self.__mu))
+            print(f"Iteration {loops} computed particle density of {N:.8f} and mu={self.__mu:.8f}")
 
             # Adjust the chemical potential (mu) based on the sign of DN (either increasing or decreasing)
             self.__mu += sign_N * delta_mu
-            last_sign = sign_N # Update the sign of DN for the next iteration
+            last_sign = sign_N  # Update the sign of DN for the next iteration
 
-        print("Green's function optimized with mu=%.8f" % self.mu)
+        if not is_interacting:
+            print(f"Non-interacting Green's function initialized with mu={self.mu:.8f}")
+        else:
+            print(f"Green's function optimized with mu={self.mu:.8f}")
+
     
     def __eval_particle_dens(self):
         """
@@ -276,10 +265,12 @@ class DysonSolver:
                         if i != j:
                             B[j,i] = np.copy(B[i,j]) # Symmetric matrix
                 
-                #B += np.eye(B.shape[0]) * 1e-10  # Add a small regularization term to the diagonal to o prevent it from being singular
-
-                # Solve for the DIIS coefficients that minimize the error
-                c_prime = np.linalg.inv(B) @ np.ones((diis_mem,))
+                B /= np.mean(B)
+                try:
+                    Binv = np.linalg.inv(B)
+                except:
+                    Binv = np.linalg.inv(B + np.eye(diis_mem)*1e-8)
+                c_prime = Binv @ np.ones((diis_mem,))
                 c = c_prime / np.sum(c_prime) # Normalize the coefficients
                 diis_vec = np.sum(c[:,None,None]*diis_val, axis=0) # Compute the new DIIS vector by weighting previous values
                 diis_val[-1] = np.copy(diis_vec) 
@@ -288,7 +279,7 @@ class DysonSolver:
                 self.__SE[:] = np.copy(diis_vec[1:])  # Update the self-energy (interacting part)
 
             # Adjust the chemical potential (mu) to match the desired particle density
-            self.__mu_adj()
+            self.__adjust_mu()
             
             # Check the convergence of the Green's function by computing the difference between the current and last values
             conv = np.sqrt(np.sum((self.Gloc.Fl - last_Glocl)**2))
